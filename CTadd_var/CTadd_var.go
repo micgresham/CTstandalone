@@ -26,6 +26,8 @@ type central struct {
 
 var appName = "CTadd_var"
 var appVer = "1.0"
+var appAuthor = "Michael Gresham"
+var appAuthorEmail = "michael.gresham@hpe.com"
 
 var p_check_dict = map[string]interface{}{}
 
@@ -247,6 +249,7 @@ func main() {
 
   fmt.Println("-------------------------------------")
   fmt.Printf("%s Version: %s\r\n",appName, appVer)
+  fmt.Printf("Author: %s (%s)\r\n",appAuthor, appAuthorEmail)
   fmt.Println("-------------------------------------")
 
   err := parser.Parse(os.Args)
