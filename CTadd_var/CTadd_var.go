@@ -36,36 +36,6 @@ var useSecureStorage = true
 
 var p_check_dict = map[string]interface{}{}
 
-func test_central(central_info goCentral.Central_struct) int {
-
-  access_token := central_info.Token
-  base_url := central_info.Base_url
-  api_function_url := fmt.Sprintf("%s/configuration/v2/groups",base_url)
-
-  c := http.Client{Timeout: time.Duration(10) * time.Second}
-  req, err := http.NewRequest("GET", api_function_url, nil)
-  if err != nil {
-      fmt.Printf("error %s", err)
-      return(0)
-  }
-  q := req.URL.Query()
-  q.Add("limit","1")
-  q.Add("offset","0")
-  req.URL.RawQuery = q.Encode()
-
-  req.Header.Add("Content-Type", `application/json`)
-  req.Header.Add("Authorization", fmt.Sprintf("Bearer %s",fmt.Sprintf(access_token)))
-  req.Header.Add("limit","1")
-  resp, err := c.Do(req)
-  if err != nil {
-      fmt.Printf("error %s", err)
-      return(0)
-  }
-
-  defer resp.Body.Close()
-  return(resp.StatusCode)
-}
-
 func get_variables(central_info goCentral.Central_struct, serial string) string {
 
   access_token := central_info.Token
@@ -265,7 +235,8 @@ func main() {
   test := parser.Flag("t", "test", &argparse.Options{Help: "Enable test mode. No variables will be changed"})
 
   //encrypted storage setup
-  SSfilename:= "../CTcentral_check/CTconfig.yml"
+//  SSfilename:= "../CTcentral_check/CTconfig.yml"
+  SSfilename:= "CTconfig.yml"
 
   //  SSfilename:= "CTconfig.yml"
   goCentral.Passphrase = "“You can use logic to justify almost anything. That’s its power. And its flaw. –Captain Cathryn Janeway"

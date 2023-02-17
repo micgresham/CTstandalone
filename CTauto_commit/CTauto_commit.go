@@ -16,55 +16,24 @@ import (
 //    "github.com/buger/jsonparser"
     "github.com/akamensky/argparse"
 //    "sigs.k8s.io/yaml"
+    "github.com/micgresham/goCentral"
 )
 
-type central struct {
-    base_url string
-    customer_id string
-    token string
-}
 
 var appName = "CTauto_commit"
 var appVer = "1.0"
 var appAuthor = "Michael Gresham"
 var appAuthorEmail = "michael.gresham@hpe.com"
+var pgmDescription = fmt.Sprintf("%s: Enable/Disable autocommit for a list of device serial numbers.",appName)
+var central_info goCentral.Central_struct
+var useSecureStorage = true
 
 var p_check_dict = map[string]interface{}{}
 
-func test_central(central_info central) int {
+func set_autocommit(central_info goCentral.Central_struct, serial string, state string) int {
 
-  access_token := central_info.token
-  base_url := central_info.base_url
-  api_function_url := fmt.Sprintf("%s/configuration/v2/groups",base_url)
-
-  c := http.Client{Timeout: time.Duration(10) * time.Second}
-  req, err := http.NewRequest("GET", api_function_url, nil)
-  if err != nil {
-      fmt.Printf("error %s", err)
-      return(0)
-  }
-  q := req.URL.Query()
-  q.Add("limit","1")
-  q.Add("offset","0")
-  req.URL.RawQuery = q.Encode()
-
-  req.Header.Add("Content-Type", `application/json`)
-  req.Header.Add("Authorization", fmt.Sprintf("Bearer %s",fmt.Sprintf(access_token)))
-  req.Header.Add("limit","1")
-  resp, err := c.Do(req)
-  if err != nil {
-      fmt.Printf("error %s", err)
-      return(0)
-  }
-
-  defer resp.Body.Close()
-  return(resp.StatusCode)
-}
-
-func set_autocommit(central_info central, serial string, state string) int {
-
-  access_token := central_info.token
-  base_url := central_info.base_url
+  access_token := central_info.Token
+  base_url := central_info.Base_url
   api_function_url := fmt.Sprintf("%sconfiguration/v1/auto_commit_state/devices",base_url)
   jsonPrep := fmt.Sprintf("{\"serials\": [ \"%s\" ], \"auto_commit_state\": \"%s\"}",serial,state)
   jsonStr := []byte(jsonPrep)
@@ -95,7 +64,7 @@ func set_autocommit(central_info central, serial string, state string) int {
 }
 
 
-func do_commit(central_info central, fname string, state string) int {
+func do_commit(central_info goCentral.Central_struct, fname string, state string) int {
 
   f := func() *os.File {
   f, err := os.Open(fname)
@@ -125,33 +94,113 @@ func do_commit(central_info central, fname string, state string) int {
   return(count)
 }
 
+func doesFileExist(fileName string) bool {
+   _ , error := os.Stat(fileName)
+
+// check if error is "file not exists"
+   if os.IsNotExist(error) {
+//     fmt.Printf("%v file does not exist\n", fileName)
+     return true
+   } else {
+//     fmt.Printf("%v file exist\n", fileName)
+     return false
+   }
+}
+
 func main() {
 
-  pgmDescription:= fmt.Sprintf("%s: Enable/Disable autocommit for a list of device serial numbers.",appName)
-  parser := argparse.NewParser("test_api",pgmDescription)
-  token := parser.String("","token", &argparse.Options{Help: "Central API token",Required: true})
-  url := parser.String("","url", &argparse.Options{Help: "Central API URL",Required: true})
-  infile := parser.String("","infile", &argparse.Options{Help: "Input file consisting of a single device serial on each line",Required: true})
-  state := parser.String("","state", &argparse.Options{Help: "Autocommit state: enable or disable",Required: true})
+  parser := argparse.NewParser(appName,pgmDescription)
+  token := parser.String("","token", &argparse.Options{Help: "Central API token if not using encrypted storage."})
+  base_url := parser.String("","url", &argparse.Options{Help: "Central API URL if not using encrypted storage."})
+  initDB := parser.Flag("","initDB", &argparse.Options{Help: "Initialize secure storage"})
+
+  infile := parser.String("","infile", &argparse.Options{Help: "Input file consisting of a single device serial on each line"})
+  state := parser.String("","state", &argparse.Options{Help: "Autocommit state: enable or disable"})
   test := parser.Flag("t", "test", &argparse.Options{Help: "Enable test mode. No variables will be changed"})
 
+  //encrypted storage setup
+//  SSfilename:= "../CTcentral_check/CTconfig.yml"
+  SSfilename:= "CTconfig.yml"
+
+  //  SSfilename:= "CTconfig.yml"
+  goCentral.Passphrase = "“You can use logic to justify almost anything. That’s its power. And its flaw. –Captain Cathryn Janeway"
 
   fmt.Println("-------------------------------------")
   fmt.Printf("%s Version: %s\r\n",appName, appVer)
   fmt.Printf("Author: %s (%s)\r\n",appAuthor, appAuthorEmail)
   fmt.Println("-------------------------------------")
 
+
   err := parser.Parse(os.Args)
   if err != nil {
-	fmt.Println(parser.Usage(err))
-	return
+        fmt.Println(parser.Usage(err))
+        return
   }
 
-  central_info := central {
-    base_url: fmt.Sprintf(*url),
-    customer_id: "",
-    token: fmt.Sprintf(*token),
+  if *test {
+    fmt.Println("--------------------------------------------------")
+    fmt.Println("TEST MODE - NO VARIABLE CHANGE WILL BE PERFORMED")
+    fmt.Println("--------------------------------------------------")
   }
+
+  //initialize the secure storage if requested
+  if *initDB {
+     goCentral.Init_DB(SSfilename)
+     os.Exit(0) //we do not do anything after the secure storage initialization
+  }
+
+  if doesFileExist(SSfilename) {
+
+     //we are not using secure storage
+     useSecureStorage = false
+
+     //if the user provided a token AND a URL we will use it
+     if (*token != "") {
+        if (*base_url == "") {
+           fmt.Println("Token supplied, but Central URL is missing.  Both are required if using the command line options.")
+           os.Exit(1)
+        }
+     } else { //ask for the token
+
+     fmt.Print("\nProvide the Central API URL: ")
+     fmt.Scanln(base_url)
+     fmt.Print("Provide the Central token: ")
+     fmt.Scanln(token)
+
+     central_info.Base_url = *base_url
+     central_info.Customer_id = ""
+     central_info.Client_id = ""
+     central_info.Client_secret = ""
+     central_info.Token = *token
+     central_info.Refresh_token = ""
+
+     }
+  } else {
+    fmt.Println("Reading secure storage")
+
+    central_info = goCentral.Read_DB(SSfilename)
+    fmt.Printf("---------------------------\n")
+    fmt.Printf("Central Info Decrypted\n")
+    fmt.Printf("---------------------------\n")
+    fmt.Printf("Central URL: %s\n",central_info.Base_url)
+//    fmt.Printf("Central Customer ID: %s\n",central_info.Customer_id)
+//    fmt.Printf("Central Client ID: %s\n",central_info.Client_id)
+//    fmt.Printf("Central Client Secret: %s\n",central_info.Client_secret)
+    fmt.Printf("Central Token: %s\n",central_info.Token)
+//    fmt.Printf("Central Refresh Token: %s\n",central_info.Refresh_token)
+  }
+
+
+if doesFileExist(*infile) {
+    fmt.Print("\nProvide the input file name: ")
+    fmt.Scanln(infile)
+}
+
+if (*state == "") {
+   fmt.Print("\nProvide autocommit state to be applied (ON|OFF): ")
+   fmt.Scanln(state)
+}
+
 
   fmt.Println("Input file name:",*infile)
   fmt.Println("Autocommit state to be applied:",*state)
@@ -159,9 +208,29 @@ func main() {
 //======================================================
 // test if valid token
 //======================================================
-  respCode := test_central(central_info)
-  fmt.Printf("Central Status: %s(%d)\r\n",http.StatusText(respCode),respCode)
-  if (respCode != 200) { os.Exit(3)}
+  respCode, new_token, new_refresh_token := goCentral.Test_central(central_info)
+  if (respCode != 200) {
+     fmt.Printf("\nCentral access failed with response code: %d\n",respCode)
+     os.Exit(3)
+  } else {
+     fmt.Print("Central access OK.  Token verified.")
+     fmt.Printf("Response code: %d\n",respCode)
+     central_info.Token = new_token
+     if useSecureStorage {
+       central_info.Refresh_token = new_refresh_token
+       goCentral.Write_DB(SSfilename,central_info)
+     }
+  }
+  if (respCode != 200) {
+   fmt.Printf("\nCentral access failed with response code: %d\n",respCode)
+   os.Exit(3)
+  }
+
+
+//---------------------------------------
+//  os.Exit(0)
+//---------------------------------------
+
 
 //======================================================
 // perform autocommit state change 
