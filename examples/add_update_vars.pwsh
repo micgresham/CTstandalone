@@ -1,0 +1,14 @@
+#!/usr/bin/env pwsh
+filename=$1
+variable="site_id"
+foreach($line in Get-Content $1) {
+
+  # reading each line and get the serials
+  ../bin/CTsite_serials-linux --site=$line --dev_type=ALL
+
+  # process each site serial file and add/update the requested vars
+  ../bin/CTadd_var-linux --infile $line-serials.txt --variable=$variable --value=$line --test
+
+
+    }
+}
