@@ -32,11 +32,16 @@ type templateGroup struct {
     wireless bool
     FWcompliance bool
     firmware string
+    AllowedDevTypes string
+    AllowedSwitchTypes string
+    Architecture string
+    ApNetworkRole string
+    GwNetworkRole string
     }
 
 
 var appName = "CTtemplate_add"
-var appVer = "1.0"
+var appVer = "1.1"
 var appAuthor = "Michael Gresham"
 var appAuthorEmail = "michael.gresham@hpe.com"
 var pgmDescription = fmt.Sprintf("%s: Add one or more template groups in Central.",appName)
@@ -65,7 +70,55 @@ func createMultipartFormData(fileFieldName, filePath string, fileName string, ex
   return
 }
 
+
 //Only works for IAPs and MobilityController device types
+func getFirmwareVersions(central_info goCentral.Central_struct, devType string)[]string {
+
+  access_token := central_info.Token
+  base_url := central_info.Base_url
+  api_function_url := fmt.Sprintf("%sfirmware/v1/versions",base_url)
+  my_fwVers := []string{}
+
+  c := http.Client{Timeout: time.Duration(10) * time.Second}
+  req, err := http.NewRequest("GET", api_function_url, nil)
+  if err != nil {
+      fmt.Printf("error %s", err)
+      return(nil)
+  }
+  q := req.URL.Query()
+  if devType == "MobilityController" {
+    q.Add("device_type","CONTROLLER")
+  } else {
+    q.Add("device_type","IAP")
+  }
+  req.URL.RawQuery = q.Encode()
+
+  req.Header.Add("Content-Type", `application/json`)
+  req.Header.Add("Authorization", fmt.Sprintf("Bearer %s",fmt.Sprintf(access_token)))
+  resp, err := c.Do(req)
+  if err != nil {
+      fmt.Printf("error %s", err)
+      return(nil)
+  }
+
+  defer resp.Body.Close()
+  body, err := ioutil.ReadAll(resp.Body)
+//  fmt.Println(string(body))
+//  available, err := jsonparser.GetBoolean(body, "available")
+//  supported, err := jsonparser.GetBoolean(body, "supported")
+  if err != nil {
+      fmt.Printf("error %s", err)
+      return(nil)
+  }
+  jsonparser.ArrayEach(body, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+    fw_ver, _ := jsonparser.GetString(value, "firmware_version")
+    my_fwVers = append(my_fwVers, fw_ver)
+  })
+
+  return(my_fwVers)
+}
+//Only works for IAPs and MobilityController device types
+//Currently broken in Central 2.5.5 - 03/13/2023
 func checkFirmware(central_info goCentral.Central_struct, devType string, firmware string) bool {
 
   access_token := central_info.Token
@@ -117,15 +170,14 @@ func checkFirmware(central_info goCentral.Central_struct, devType string, firmwa
 
   return(false)
 }
-
 //Only works for IAPs and MobilityController device types
 func setFirmware(central_info goCentral.Central_struct, gname string, Tgroup templateGroup) string {
 
   access_token := central_info.Token
   base_url := central_info.Base_url
-  api_function_url := fmt.Sprintf("%s/firmware/v1/upgrade/compliance_version",base_url)
+  api_function_url := fmt.Sprintf("%s/firmware/v2/upgrade/compliance_version",base_url)
 
-  jsonPrep := fmt.Sprintf("{\"device_type\":\"%s\",\"group\":\"%s\",\"firmware_compliance_version\":\"%s\",\"reboot\":true,\"allow_unsupported_version\":true}",Tgroup.devtype,gname,Tgroup.firmware)
+  jsonPrep := fmt.Sprintf("{\"device_type\":\"%s\",\"group\":\"%s\",\"firmware_compliance_version\":\"%s\",\"reboot\":true,\"allow_unsupported_version\":true,\"compliance_scheduled_at\":0}",Tgroup.devtype,gname,Tgroup.firmware)
   jsonStr := []byte(jsonPrep)
 
 //  fmt.Println(jsonPrep)
@@ -201,9 +253,20 @@ func createGroup(central_info goCentral.Central_struct, gname string, Tgroup tem
 
   access_token := central_info.Token
   base_url := central_info.Base_url
-  api_function_url := fmt.Sprintf("%s/configuration/v2/groups",base_url)
+  api_function_url := fmt.Sprintf("%s/configuration/v3/groups",base_url)
 
-  jsonPrep := fmt.Sprintf("{\"group\":\"%s\", \"group_attributes\":{\"template_info\":{\"Wired\": %v, \"Wireless\": %v }}}",gname,Tgroup.wired,Tgroup.wireless)
+  jsonPrep := ""
+  if (Tgroup.devtype == "IAP") {
+     jsonPrep = fmt.Sprintf("{\"group\":\"%s\", \"group_attributes\":{\"template_info\":{\"Wired\": %v, \"Wireless\": %v }, \"group_properties\":{\"AllowedDevTypes\": %s, \"Architecture\": \"%s\", \"ApNetworkRole\": \"%s\",\"AllowedSwitchTypes\": %s, \"MonitorOnly\": [] }}}",gname,Tgroup.wired,Tgroup.wireless,Tgroup.AllowedDevTypes,Tgroup.Architecture,Tgroup.ApNetworkRole,Tgroup.AllowedSwitchTypes)
+  }
+  if (TG.devtype == "MobilityController") {
+     jsonPrep = fmt.Sprintf("{\"group\":\"%s\", \"group_attributes\":{\"template_info\":{\"Wired\": %v, \"Wireless\": %v }, \"group_properties\":{\"AllowedDevTypes\": %s, \"Architecture\": \"%s\", \"ApNetworkRole\": \"%s\", \"AllowedSwitchTypes\": %s, \"MonitorOnly\": [] }}}",gname,Tgroup.wired,Tgroup.wireless,Tgroup.AllowedDevTypes,TG.Architecture,TG.ApNetworkRole,Tgroup.AllowedSwitchTypes)
+  }
+  if (TG.devtype == "Switches") {
+     jsonPrep = fmt.Sprintf("{\"group\":\"%s\", \"group_attributes\":{\"template_info\":{\"Wired\": %v, \"Wireless\": %v }, \"group_properties\":{\"AllowedDevTypes\": %s, \"Architecture\": \"%s\", \"ApNetworkRole\": \"%s\", \"AllowedSwitchTypes\": %s, \"MonitorOnly\": [] }}}",gname,Tgroup.wired,Tgroup.wireless,Tgroup.AllowedDevTypes,TG.Architecture,TG.ApNetworkRole,Tgroup.AllowedSwitchTypes)
+  }
+
+  fmt.Println(jsonPrep)
   jsonStr := []byte(jsonPrep)
 
   c := http.Client{Timeout: time.Duration(10) * time.Second}
@@ -364,6 +427,8 @@ func main() {
 //  SSfilename:= "../CTcentral_check/CTconfig.yml"
   SSfilename:= "CTconfig.yml"
 
+  fw_vers := []string{}
+
   //  SSfilename:= "CTconfig.yml"
   goCentral.Passphrase = "“You can use logic to justify almost anything. That’s its power. And its flaw. –Captain Cathryn Janeway"
 
@@ -471,14 +536,9 @@ func main() {
   if (TG.devtype == "IAP") || (TG.devtype == "MobilityController") {
 	  TG.FWcompliance = yesNo("Do you wish to apply firmware compliance to the groups? : ")
 	  if (TG.FWcompliance) {
-		  TG.firmware = promptString("What firmware version? Be sure to enter it exactly as listed in Central. ","")
-		  //validate firmware version for devie t)ype
-                  if !(checkFirmware(central_info,TG.devtype, TG.firmware)) { 
-			fmt.Println("Firmware version either not available or not supported by selected device type.")
-			os.Exit(3)
-		  } else {
-			fmt.Println("  Firmware available and supported by selected device type.")
-		  }
+		  fw_vers = getFirmwareVersions(central_info,TG.devtype)
+
+                  TG.firmware = promptSelect("Please select a firmware version:",fw_vers)
 	  }
   }
 
@@ -487,12 +547,29 @@ func main() {
 
   TG.model = promptString("This group limited to model","ALL")
 
+  TG.Architecture = "Instant"
+  TG.ApNetworkRole = "Standard"
+  TG.GwNetworkRole = "BranchGateway"
+
   if (TG.devtype == "IAP") || (TG.devtype == "MobilityController") {
 	TG.wireless = true
 	TG.wired = false
+	if (TG.devtype == "IAP") {
+	  TG.AllowedDevTypes = "[\"AccessPoints\"]"
+	  TG.AllowedSwitchTypes = "[]"
+	} else {
+	  TG.AllowedDevTypes = "[\"Gateways\"]"
+	  TG.AllowedSwitchTypes = "[]"
+	}
   } else {
 	TG.wireless = false
 	TG.wired = true
+	TG.AllowedDevTypes = "[\"Switches\"]"
+	if (TG.devtype == "CX") {
+	    TG.AllowedSwitchTypes = "[\"AOS_CX\"]"
+	} else {
+	    TG.AllowedSwitchTypes = "[\"AOS_S\"]"
+	}
   }
 
 //  TG.wired = yesNo("Will this group contain wired devices? : ")
