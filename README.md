@@ -1,6 +1,6 @@
 # Central Tools Standalone (CTstandalone)
 
-This is a collection of standalone tools for performing various configuration and validation tasks in Central.  It consists of the following tools currently:
+This is a collection of standalone tools for performing various configuration and validation tasks via the Central API.  It consists of the following tools currently:
 
 -------------------------------------
 CTadd_var Version: 1.5
