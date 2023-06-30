@@ -41,7 +41,7 @@ type templateGroup struct {
 
 
 var appName = "CTtemplate_add"
-var appVer = "1.1"
+var appVer = "1.2"
 var appAuthor = "Michael Gresham"
 var appAuthorEmail = "michael.gresham@hpe.com"
 var pgmDescription = fmt.Sprintf("%s: Add one or more template groups in Central.",appName)
@@ -255,8 +255,8 @@ func uploadTemplate(central_info goCentral.Central_struct, gname string, Tgroup 
   }
 
   defer resp.Body.Close()
-  body, err := ioutil.ReadAll(resp.Body)
-  fmt.Println(string(body))
+//  body, err := ioutil.ReadAll(resp.Body)
+//  fmt.Println(string(body))
 
   return(resp.Status)
 }
@@ -612,6 +612,9 @@ func main() {
     fmt.Print("\nThe following template group will be created : ")
     fmt.Print(TG.gname)
     fmt.Println(" - ",createGroup(central_info, TG.gname, TG))
+
+    time.Sleep(10 * time.Second)
+
     fmt.Print("\nUploading template to group  - ")
     fmt.Println(uploadTemplate(central_info, TG.gname, TG))
 
